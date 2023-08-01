@@ -16,6 +16,7 @@ from torch_geometric.utils import softmax
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import random
 import dgl
 import uuid
 import dgl.nn.pytorch as dglnn
@@ -608,8 +609,7 @@ def recommend_users(sla_model, user_embeddings):
 
     return recommendations
 
-
-def evaluate_recommendations(recommendations, ground_truth_ratings, test_size=0.1):
+def evaluate_recommendations(recommendations, ground_truth_ratings, validation_size=0.1, test_size=0.2):
     true_ratings = []
     recommended_ratings = []
 
@@ -627,19 +627,35 @@ def evaluate_recommendations(recommendations, ground_truth_ratings, test_size=0.
         print("Insufficient data for evaluation.")
         return None
 
-    # Perform train-test split   
-    true_ratings_train, true_ratings_test, recommended_ratings_train, recommended_ratings_test = train_test_split(
-        true_ratings, recommended_ratings, test_size=test_size, random_state=42)
+    # Randomly shuffle the data
+    combined_data = list(zip(true_ratings, recommended_ratings))
+    random.shuffle(combined_data)
+    true_ratings, recommended_ratings = zip(*combined_data)
 
-    if len(true_ratings_train) > 0 and len(recommended_ratings_train) > 0:
-        auc_score_train = roc_auc_score(true_ratings_train, recommended_ratings_train)
-        ndcg_score_train = ndcg_score([true_ratings_train], [recommended_ratings_train])
-        recall_score_train = np.mean(np.equal(true_ratings_train, recommended_ratings_train))
+    # Calculate the indices to split the data into test, validation, and training sets
+    num_samples = len(true_ratings)
+    validation_split_index = int(num_samples * (1 - validation_size))
+    test_split_index = int(num_samples * (1 - test_size))
 
-        print("Training Evaluation Scores:")
-        print("AUC Score:", auc_score_train)
-        print("NDCG Score:", ndcg_score_train)
-        print("Recall Score:", recall_score_train)
+    # Split the data into training, validation, and test sets
+    true_ratings_train = true_ratings[:validation_split_index]
+    recommended_ratings_train = recommended_ratings[:validation_split_index]
+
+    true_ratings_validation = true_ratings[validation_split_index:test_split_index]
+    recommended_ratings_validation = recommended_ratings[validation_split_index:test_split_index]
+
+    true_ratings_test = true_ratings[test_split_index:]
+    recommended_ratings_test = recommended_ratings[test_split_index:]
+
+    if len(true_ratings_validation) > 0 and len(recommended_ratings_validation) > 0:
+        auc_score_validation = roc_auc_score(true_ratings_validation, recommended_ratings_validation)
+        ndcg_score_validation = ndcg_score([true_ratings_validation], [recommended_ratings_validation])
+        recall_score_validation = np.mean(np.equal(true_ratings_validation, recommended_ratings_validation))
+
+        print("Validation Evaluation Scores:")
+        print("AUC Score:", auc_score_validation)
+        print("NDCG Score:", ndcg_score_validation)
+        print("Recall Score:", recall_score_validation)
 
     if len(true_ratings_test) > 0 and len(recommended_ratings_test) > 0:
         auc_score_test = roc_auc_score(true_ratings_test, recommended_ratings_test)
@@ -651,7 +667,7 @@ def evaluate_recommendations(recommendations, ground_truth_ratings, test_size=0.
         print("NDCG Score:", ndcg_score_test)
         print("Recall Score:", recall_score_test)
 
-    return auc_score_train, ndcg_score_train, recall_score_train, auc_score_test, ndcg_score_test, recall_score_test
+    return auc_score_validation, ndcg_score_validation, recall_score_validation, auc_score_test, ndcg_score_test, recall_score_test
 
 def main():
         
@@ -828,17 +844,11 @@ def main():
                 user_id = row['user_id']
                 rating = row['rating']
                 ground_truth_ratings[user_id] = {'rating': rating}
-
-    # Call the evaluate_recommendations function to evaluate recommendations
-    evaluation_scores = evaluate_recommendations(recommendations, ground_truth_ratings)
-
-    if evaluation_scores:
-        auc, ndcg, recall = evaluation_scores
-        print("AUC Score:", auc)
-        print("NDCG Score:", ndcg)
-        print("Recall Score:", recall)
-    else:
-        print("Insufficient data for evaluation.")
+       
+    # Call the evaluate_recommendations function
+    validation_size = 0.1  # Set the proportion of the training set for validation
+    test_size = 0.2  # Set the proportion of the data for testing
+    result = evaluate_recommendations(recommendations, ground_truth_ratings, validation_size, test_size)
                         
 if __name__ == '__main__':
     main()
