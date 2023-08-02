@@ -316,21 +316,19 @@ def find_paths_users_interests(df):
     for uid in G.nodes():
         if G.nodes[uid]['node_type'] == 'user':
             user_rated_recipes = [rid for rid in G.neighbors(uid) if G.nodes[rid]['node_type'] == 'recipe']
-            has_rated_recipe = any(rid in df['recipe_id'].values.tolist() for rid in user_rated_recipes)
-            if has_rated_recipe:
-                for rid in user_rated_recipes:
-                    if df.loc[df['recipe_id'] == rid, 'rating'].iloc[0] >= df.loc[df['recipe_id'] == rid, 'avg_rating'].iloc[0]:
-                        ingredient_node = None
-                        nutrition_node = None
-                        
-                        for node in G.neighbors(rid):
-                            if G.nodes[node]['node_type'] == 'ingredients':
-                                ingredient_node = node
-                            elif G.nodes[node]['node_type'] == 'nutrition':
-                                nutrition_node = node
-                        
-                        if ingredient_node and nutrition_node:
-                            paths.append([uid, rid, ingredient_node, nutrition_node])
+            for rid in user_rated_recipes:
+                if df.loc[df['recipe_id'] == rid, 'rating'].iloc[0] >= df.loc[df['recipe_id'] == rid, 'avg_rating'].iloc[0]:
+                    ingredient_node = None
+                    nutrition_node = None
+
+                    for node in G.neighbors(rid):
+                        if G.nodes[node]['node_type'] == 'ingredients':
+                            ingredient_node = node
+                        elif G.nodes[node]['node_type'] == 'nutrition':
+                            nutrition_node = node
+
+                    if ingredient_node and nutrition_node:
+                        paths.append([uid, rid, ingredient_node, nutrition_node])
 
     # Encode the paths using label encoders
     user_encoder = LabelEncoder()
@@ -493,21 +491,19 @@ def find_healthy_foods(df):
     for uid in G.nodes():
         if G.nodes[uid]['node_type'] == 'user':
             user_rated_recipes = [rid for rid in G.neighbors(uid) if G.nodes[rid]['node_type'] == 'recipe']
-            has_rated_recipe = any(rid in df['recipe_id'].values.tolist() for rid in user_rated_recipes)
-            if has_rated_recipe:
-                for rid in user_rated_recipes:
-                    if df.loc[df['recipe_id'] == rid, 'rating'].iloc[0] >= df.loc[df['recipe_id'] == rid, 'avg_rating'].iloc[0]:
-                        ingredient_node = None
-                        nutrition_node = None
+            for rid in user_rated_recipes:
+                if df.loc[df['recipe_id'] == rid, 'rating'].iloc[0] >= df.loc[df['recipe_id'] == rid, 'avg_rating'].iloc[0]:
+                    ingredient_node = None
+                    nutrition_node = None
 
-                        for node in G.neighbors(rid):
-                            if G.nodes[node]['node_type'] == 'ingredients':
-                                ingredient_node = node
-                            elif G.nodes[node]['node_type'] == 'nutrition':
-                                nutrition_node = node
+                    for node in G.neighbors(rid):
+                        if G.nodes[node]['node_type'] == 'ingredients':
+                            ingredient_node = node
+                        elif G.nodes[node]['node_type'] == 'nutrition':
+                            nutrition_node = node
 
-                        if ingredient_node and nutrition_node:
-                            paths.append([uid, rid, ingredient_node, nutrition_node])
+                    if ingredient_node and nutrition_node:
+                        paths.append([uid, rid, ingredient_node, nutrition_node])
 
     healthy_foods = set()
 
