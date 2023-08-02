@@ -35,10 +35,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import LabelEncoder
 import zipfile
 
-
-folder_path = r"C:\Food"
+folder_path = r"."
 files_to_read = ['Food_Dataset.zip']
-file_path = r"C:\Food\Food_Dataset.zip"
+file_path = r"Food_Dataset.zip"
 
 # Read the file into a pandas DataFrame
 df = pd.read_csv(file_path)
@@ -68,10 +67,10 @@ def process_data(folder_path, files_to_read):
                     recipe_scores[rid]['total_score'] += r
                     recipe_scores[rid]['count'] += 1
 
-    # Calculate the average score for each recipe_id
-    for rid, scores in recipe_scores.items():
-        avg_score = scores['total_score'] / scores['count']
-        print(f"Recipe ID: {rid}, Average Score: {avg_score}")
+    # # Calculate the average score for each recipe_id
+    # for rid, scores in recipe_scores.items():
+    #     avg_score = scores['total_score'] / scores['count']
+    #     print(f"Recipe ID: {rid}, Average Score: {avg_score}")
 
     # Extract ingredients and nutrition from 'Food_Dataset.zip' file
     df = pd.read_csv(os.path.join(folder_path, 'Food_Dataset.zip'))
@@ -97,41 +96,69 @@ def process_data(folder_path, files_to_read):
         print(f"Ingredient Tokens: {ing_t}")
         print()
 
-def Heterogeneous_Graph(df):
+def Load_Into_Graph(df):
+    """Given a data frame with columns 'user_id', 'recipe_id',
+    'ingredients', and 'nutrition', construct a multigraph with the
+    following schema:
+
+    Nodes:
+    * user: identified with user_id
+    * recipe: identified with recipe_id
+    * ingredients: identified with ingredient string
+    * nutrient: one of nutrients below
+
+    Edges:
+    * user -> recipe, if user rated recipe, with the rating as the weight
+    * recipe -> ingredients, if recipe contains that ingredient
+    * recipe -> nutrient, if recipe contains that nutrient, with the amount as the weight
+
+    Note: Ingredient and nutrient lists are included in the data frame
+        as Python-like lists, e.g., "['salt', 'wheat flour', 'rice']"
+        for ingredients and [1,.5,0] for nutrients. They are therefore
+        decoded.
+
+    """
+
+    print("Loading data into a graph...")
     # Create an empty graph
     G = nx.MultiGraph()
 
-    # Iterate through the data and populate the graph
-    for i in range(len(df)):
-        uid = df.loc[i, 'user_id']
-        rid = df.loc[i, 'recipe_id']
-        ing = df.loc[i, 'ingredients']
-        nut = df.loc[i, 'nutrition']
+    nutrients = ["Proteins", "Carbohydrates", "Sugars",
+                 "Sodium", "Fat", "Saturated_fats", "Fibers"]
+    G.add_nodes_from(nutrients, node_type='nutrition')
 
-        # Add user_id, recipe_id, ingredients, and nutrition as nodes
+    # Iterate through the data and populate the graph
+    for uid, rid, r, ing, nut in df[['user_id', 'recipe_id', 'rating', 'ingredients', 'nutrition']].itertuples(False, None):
+        # Add user_id, recipe_id
         G.add_node(uid, node_type='user')
         G.add_node(rid, node_type='recipe')
-        G.add_node(ing, node_type='ingredients')
-        G.add_node(nut, node_type='nutrition')
 
         # Add edges between user_id and recipe_id
-        G.add_edge(uid, rid, edge_type='rating')
+        G.add_edge(uid, rid, weight=r, edge_type='rating')
 
-        # Add edges between recipe_id and ingredients
-        if isinstance(ing, str):
-            ingredients_list = ing.split(',')
-            for ingredient in ingredients_list:
-                ingredient = ingredient.strip()
-                G.add_node(ingredient, node_type='ingredients')
-                G.add_edge(rid, ingredient, edge_type='ingredient')
+        # Note: The following may only need to be run the first time a new rid is added.
 
-        # Add edges between recipe_id and nutrition
-        if isinstance(nut, str):
-            nutrition_list = nut.split(',')
-            for nutrition_item in nutrition_list:
-                nutrition_item = nutrition_item.strip()
-                G.add_node(nutrition_item, node_type='nutrition')
-                G.add_edge(rid, nutrition_item, edge_type='nutrition')
+        # Add new ingredients as nodes
+        if type(ing) is str:
+            ings = eval(ing)
+            G.add_nodes_from(ings, node_type='ingredients')
+            # Add edges between recipe_id and ingredients
+            for ing in ings: G.add_edge(rid, ing, edge_type='ingredient')
+
+        # Add edges between recipe_id and nutrients
+        if type(nut) is str:
+            nuts = eval(nut)
+            for j, nut in enumerate(nutrients):
+                if nuts[j] > 0:
+                    G.add_edge(rid, nut, weight=nuts[j], edge_type='nutrition')
+
+    print("Finished; resulting graph:")
+    print(G)
+    return G
+
+def Heterogeneous_Graph(df):
+    # Populate the heterogeneous graph
+    G = Load_Into_Graph(df)
 
     # Define the meta-paths
     meta_paths = [
@@ -269,41 +296,8 @@ class HeterogeneousDataset(Dataset):
 
 # Define the find_paths_users_interests function
 def find_paths_users_interests(df):
-    # Create an empty graph
-    G = nx.MultiGraph()
-
-    # Iterate through the data and populate the graph
-    for i in range(len(df)):
-        uid = df.loc[i, 'user_id']
-        rid = df.loc[i, 'recipe_id']
-        r = df.loc[i, 'rating']
-        ing = df.loc[i, 'ingredients']
-        nut = df.loc[i, 'nutrition']
-
-        # Add user_id, recipe_id, ingredients, and nutrition as nodes
-        G.add_node(uid, node_type='user')
-        G.add_node(rid, node_type='recipe')
-        G.add_node(ing, node_type='ingredients')
-        G.add_node(nut, node_type='nutrition')
-
-        # Add edges between user_id and recipe_id
-        G.add_edge(uid, rid, weight=float(r), edge_type='rating')
-
-        # Add edges between recipe_id and ingredients
-        if isinstance(ing, str):
-            ingredients_list = ing.split(',')
-            for ingredient in ingredients_list:
-                ingredient = ingredient.strip()
-                G.add_node(ingredient, node_type='ingredients')
-                G.add_edge(rid, ingredient, edge_type='ingredient')
-
-        # Add edges between recipe_id and nutrition
-        if isinstance(nut, str):
-            nutrition_list = nut.split(',')
-            for nutrition_item in nutrition_list:
-                nutrition_item = nutrition_item.strip()
-                G.add_node(nutrition_item, node_type='nutrition')
-                G.add_edge(rid, nutrition_item, edge_type='nutrition')
+    # Populate the heterogeneous graph
+    G = Load_Into_Graph(df)
 
     # Calculate the average rating for each recipe_id and create a new column 'avg_rating'
     df['avg_rating'] = df.groupby('recipe_id')['rating'].mean()
