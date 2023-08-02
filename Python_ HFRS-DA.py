@@ -96,7 +96,7 @@ def process_data(folder_path, files_to_read):
         print(f"Nutrition: {nut}")
         print(f"Ingredient Tokens: {ing_t}")
         print()
-        
+
 def Heterogeneous_Graph(df):
     # Create an empty graph
     G = nx.MultiGraph()
@@ -146,7 +146,7 @@ def Heterogeneous_Graph(df):
     for meta_path in meta_paths:
         print("Meta-Path:", " -> ".join(meta_path))
         paths = []
-        
+
         # Check if the meta-path starts with 'user_id' and ends with 'ingredients'
         if meta_path[0] == 'user_id' and meta_path[-1] == 'ingredients':
             for uid in G.nodes():
@@ -156,7 +156,7 @@ def Heterogeneous_Graph(df):
                             for ing in G.neighbors(rid):
                                 if G.nodes[ing]['node_type'] == 'ingredients':
                                     paths.append([uid, rid, ing])
-        
+
         # Check if the meta-path starts with 'user_id' and ends with 'nutrition'
         elif meta_path[0] == 'user_id' and meta_path[-1] == 'nutrition':
             for uid in G.nodes():
@@ -168,7 +168,7 @@ def Heterogeneous_Graph(df):
                                     for ing in G.neighbors(rid):
                                         if G.nodes[ing]['node_type'] == 'ingredients':
                                             paths.append([uid, rid, nut, ing])
-        
+
         # Print only the first 5 paths for each meta-path
         for i, path in enumerate(paths[:5]):
             print("Path:", path)
@@ -187,7 +187,7 @@ def Heterogeneous_Graph(df):
                 else:
                     print("No edges between", source, "and", target)
             print()
-        
+
 # Define the NLA class
 class NLA(nn.Module):
     def __init__(self, num_users, num_recipes, num_ingredients, num_nutrition, embedding_dim, paths):
@@ -220,7 +220,7 @@ class NLA(nn.Module):
                 matching_uid = torch.where(uid == path[0])[0]
                 matching_rid = torch.where(rid == path[1])[0]
                 matching_ing = torch.where(ing == path[2])[0]
-                
+
                 # Check if there are any matching indices
                 if matching_uid.size(0) > 0 and matching_rid.size(0) > 0 and matching_ing.size(0) > 0:
                     matching_count = min(matching_uid.size(0), matching_rid.size(0), matching_ing.size(0))
@@ -279,7 +279,7 @@ def find_paths_users_interests(df):
         r = df.loc[i, 'rating']
         ing = df.loc[i, 'ingredients']
         nut = df.loc[i, 'nutrition']
-        
+
         # Add user_id, recipe_id, ingredients, and nutrition as nodes
         G.add_node(uid, node_type='user')
         G.add_node(rid, node_type='recipe')
@@ -311,7 +311,7 @@ def find_paths_users_interests(df):
     # Print the meta-path
     meta_path = ['user_id', 'recipe_id', 'ingredient', 'nutrition']
     print("Meta-Path:", " -> ".join(meta_path))
-       
+
     paths = []
     for uid in G.nodes():
         if G.nodes[uid]['node_type'] == 'user':
@@ -347,7 +347,7 @@ def find_paths_users_interests(df):
     for i, (path, encoded_path) in enumerate(zip(paths, encoded_paths)):
         print("Original Path:", path)
         print("Encoded Path:", encoded_path)
-        if i == 5:  
+        if i == 5:
             break
 
     return paths_tensor, meta_path
@@ -384,7 +384,7 @@ class NLA(nn.Module):
                 matching_uid = torch.where(uid == path[0])[0]
                 matching_rid = torch.where(rid == path[1])[0]
                 matching_ing = torch.where(ing == path[2])[0]
-                
+
                 # Check if there are any matching indices
                 if matching_uid.size(0) > 0 and matching_rid.size(0) > 0 and matching_ing.size(0) > 0:
                     matching_count = min(matching_uid.size(0), matching_rid.size(0), matching_ing.size(0))
@@ -528,7 +528,7 @@ def find_healthy_foods(df):
 
     # Convert paths to tensors
     paths_tensor = torch.tensor(encoded_paths, dtype=torch.long)
-    
+
     # Print the filtered paths
     for path, encoded_path in zip(paths, encoded_paths):
         print("Health foods Path:", path)
@@ -552,7 +552,7 @@ def rate_healthy_recipes_for_user(user_id, df):
                 user_healthy_recipes.add(rid)
 
     return user_healthy_recipes
-    
+
 def recommend_users(sla_model, user_embeddings):
     # Calculate the cosine similarity between all pairs of user embeddings
     all_similarities = cosine_similarity(user_embeddings, user_embeddings)
@@ -666,10 +666,10 @@ def evaluate_recommendations(recommendations, ground_truth_ratings, validation_s
     return auc_score_validation, ndcg_score_validation, recall_score_validation, auc_score_test, ndcg_score_test, recall_score_test
 
 def main():
-        
+
     # Call the process_data function
     process_data(folder_path, files_to_read)
-    
+
     # Call the Heterogeneous_Graph function
     Heterogeneous_Graph(df)
 
@@ -678,10 +678,10 @@ def main():
 
     # Print the filtered meta-path
     print("Filtered Meta-Path:", " -> ".join(meta_path))
-   
+
     health_foods_paths = find_healthy_foods(df)
     print("Healthy Foods Paths:", health_foods_paths)
-    
+
     # Get the unique user IDs
     unique_user_ids = df['user_id'].unique()
 
@@ -689,7 +689,7 @@ def main():
         # Rate healthy recipes for the user
         user_healthy_recipes = rate_healthy_recipes_for_user(user_id, df)
         print(f"Healthy recipes rated by user {user_id}: {user_healthy_recipes}")
-           
+
     # Call the SLA class
     num_ingredients = len(df['ingredients'].unique())
     embedding_dim = 64
@@ -760,7 +760,7 @@ def main():
     aggregated_ingredients = sla(ingredient_tensor)
     print("Embeddings Vectors (SLA):")
     print(aggregated_ingredients)
-    
+
     # Define the loss function for SLA
     def edge_loss(h_sla):
         loss = -torch.log(1 / (1 + torch.exp(h_sla)))
@@ -798,7 +798,7 @@ def main():
 
     # Print the total loss
     print("Total Loss:", total_loss)
-    
+
     top_k = 10  # Number of top similar users to recommend
 
     # Recommendation step using SLA embeddings
@@ -830,7 +830,7 @@ def main():
         for recommended_user_id in recommended_user_ids:
             print(recommended_user_id)
 
-                            
+
     # Read the ground truth ratings into a dictionary
     ground_truth_ratings = {}
     for file in files_to_read:
@@ -840,11 +840,11 @@ def main():
                 user_id = row['user_id']
                 rating = row['rating']
                 ground_truth_ratings[user_id] = {'rating': rating}
-       
+
     # Call the evaluate_recommendations function
     validation_size = 0.1  # Set the proportion of the training set for validation
     test_size = 0.2  # Set the proportion of the data for testing
     result = evaluate_recommendations(recommendations, ground_truth_ratings, validation_size, test_size)
-                        
+
 if __name__ == '__main__':
     main()
