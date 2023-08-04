@@ -492,7 +492,7 @@ def rate_healthy_recipes_for_user(user_id, df):
 
     return user_healthy_recipes
     
-def recommend_users(sla_model, user_embeddings):
+def recommend_users(user_embeddings):
     # Calculate the cosine similarity between all pairs of user embeddings
     all_similarities = cosine_similarity(user_embeddings, user_embeddings)
 
@@ -737,26 +737,32 @@ def main():
 
     # Print the total loss
     print("Total Loss:", total_loss)
-    
-    top_k = 10  # Number of top similar users to recommend
-
+        
     # Recommendation step using SLA embeddings
+    top_k = 10  # Number of top similar users to recommend
     index_to_user_id = {index: user_id for index, user_id in enumerate(user_encoder.classes_)}
+
+    # Convert aggregated_ingredients to NumPy array
+    aggregated_ingredients_np = aggregated_ingredients.detach().numpy()
+
+    # Calculate cosine similarity between aggregated embeddings
+    all_similarities = cosine_similarity(aggregated_ingredients_np, aggregated_ingredients_np)
 
     recommendations = {}
     count_users = 0
 
     for user_index, user_id in index_to_user_id.items():
-        user_embedding = embeddings_nla[user_index]
+        user_embedding = aggregated_ingredients[user_index]
 
         # Calculate cosine similarities between the user and all other users
-        similarities = torch.cosine_similarity(user_embedding.unsqueeze(0), embeddings_nla)
+        user_embedding_np = user_embedding.detach().numpy()
+        similarities = cosine_similarity(user_embedding_np.reshape(1, -1), aggregated_ingredients_np)
 
         # Get the indices of the top-k most similar users
-        top_k_indices = torch.argsort(similarities, descending=True)[1:top_k + 1]
+        top_k_indices = np.argsort(similarities.ravel())[::-1][1:top_k + 1]
 
         # Map the indices to user IDs
-        recommended_user_ids = [index_to_user_id[index.item()] for index in top_k_indices]
+        recommended_user_ids = [index_to_user_id[index] for index in top_k_indices]
         recommendations[user_id] = recommended_user_ids
 
         count_users += 1
@@ -768,8 +774,7 @@ def main():
         print(f"Recommended users for {user_id}:")
         for recommended_user_id in recommended_user_ids:
             print(recommended_user_id)
-
-                            
+                         
     # Read the ground truth ratings into a dictionary
     ground_truth_ratings = {}
     for file in files_to_read:
