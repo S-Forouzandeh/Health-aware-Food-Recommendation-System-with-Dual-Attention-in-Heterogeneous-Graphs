@@ -78,7 +78,7 @@ def process_data(folder_path, files_to_read):
     recipe_id = df['recipe_id']
     ingredients = df['ingredients']
     nutrition = df['nutrition']
-    ingredient_tokens = df['ingredient_tokens']
+    nutrition_health = df['nutrition_health']
 
     # Print the first 10 user_ids along with their information
     for i in range(min(3, len(df))):
@@ -87,7 +87,7 @@ def process_data(folder_path, files_to_read):
         rat = df.loc[i, 'rating']
         ing = df.loc[i, 'ingredients']
         nut = df.loc[i, 'nutrition']
-        ing_t = df.loc[i, 'ingredient_tokens']
+        ing_t = df.loc[i, 'nutrition_health']
 
         print(f"User ID: {uid}")
         print(f"Recipe ID: {rid}")
@@ -370,16 +370,34 @@ class SLA(nn.Module):
         aggregated_ingredients = torch.sum(weighted_ingredients, dim=1)
         return aggregated_ingredients
 
-# Define the health foods list
-health_foods_list = {
-    "Proteins": 5867,
-    "Carbohydrates": 1454,
-    "Sugars": 8780,
-    "Sodium": 4914,
-    "Fat": 3035,
-    "Saturated_fats": 119590,
-    "Fibers": 10734
-}
+# Define the is_healthy function
+def is_healthy(food_data):
+    fibres = food_data[0]
+    fat = food_data[1]
+    sugar = food_data[2]
+    sodium = food_data[3]
+    protein = food_data[4]
+    saturated_fat = food_data[5]
+    carbohydrates = food_data[6]
+    
+    conditions_met = 0
+    
+    if fibres > 10:
+        conditions_met += 1
+    if 15 <= fat <= 30:
+        conditions_met += 1
+    if sugar < 10:
+        conditions_met += 1
+    if sodium < 5:
+        conditions_met += 1
+    if 10 <= protein <= 15:
+        conditions_met += 1
+    if saturated_fat < 10:
+        conditions_met += 1
+    if 55 <= carbohydrates <= 75:
+        conditions_met += 1
+    
+    return conditions_met >= 3
 
 def find_healthy_foods(df):
     # Create an empty graph
@@ -392,7 +410,7 @@ def find_healthy_foods(df):
         r = df.loc[i, 'rating']
         ing = df.loc[i, 'ingredients']
         nut = df.loc[i, 'nutrition']
-        ing_t = df.loc[i, 'ingredient_tokens']
+        ing_t = df.loc[i, 'nutrition_health']
 
         # Add user_id, recipe_id, ingredients, and nutrition as nodes
         G.add_node(uid, node_type='user')
@@ -454,15 +472,13 @@ def find_healthy_foods(df):
                 user_rated_recipes = [rid for rid in G.neighbors(uid) if G.nodes[rid]['node_type'] == 'recipe']
                 for rid in user_rated_recipes:
                     if G.get_edge_data(uid, rid)[0]['weight'] >= avg_rating:
-                        ingredients_tokens = [int(token) for token in ing_t.split(',') if token.strip().isdigit()]
-                        num_health_foods = sum(1 for food_num in health_foods_list.values() if food_num in ingredients_tokens)
-                        if num_health_foods >= 3:
+                        nutrition_health = [int(token) for token in df[df['recipe_id'] == rid]['nutrition_health'].iloc[0].split(',') if token.strip().isdigit()]
+                        if is_healthy(nutrition_health):  # Use the is_healthy function here
                             healthy_foods.add(rid)
 
     # Encode the paths using label encoders
     recipe_encoder = LabelEncoder()
     recipe_encoder.fit(list(healthy_foods))
-
     encoded_paths = [[path[1]] for path in paths if path[1] in healthy_foods]
 
     # Convert paths to tensors
@@ -485,12 +501,16 @@ def rate_healthy_recipes_for_user(user_id, df):
         avg_rating = user_data[user_data['recipe_id'] == rid]['avg_rating'].iloc[0]
         rating = user_data[user_data['recipe_id'] == rid]['rating'].iloc[0]
         if rating >= avg_rating:
-            ingredients_tokens = [int(token) for token in user_data[user_data['recipe_id'] == rid]['ingredient_tokens'].iloc[0].split(',') if token.strip().isdigit()]
-            num_health_foods = sum(1 for food_num in health_foods_list.values() if food_num in ingredients_tokens)
-            if num_health_foods >= 3:
+            nutrition_health = [int(token) for token in user_data[user_data['recipe_id'] == rid]['nutrition_health'].iloc[0].split(',') if token.strip().isdigit()]
+            if is_healthy(nutrition_health):
                 user_healthy_recipes.add(rid)
 
+    print("Healthy recipes for user:", user_id)
+    for recipe_id in user_healthy_recipes:
+        print("Recipe ID:", recipe_id)
+
     return user_healthy_recipes
+
     
 def recommend_users(user_embeddings):
     # Calculate the cosine similarity between all pairs of user embeddings
