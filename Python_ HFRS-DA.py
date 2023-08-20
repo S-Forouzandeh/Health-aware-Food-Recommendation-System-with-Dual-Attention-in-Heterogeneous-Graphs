@@ -97,77 +97,96 @@ def process_data(folder_path, files_to_read):
         print(f"Ingredient Tokens: {ing_t}")
         print()
         
+def process_ingredients(ingredients):
+    if isinstance(ingredients, str):
+        return [ingredient.strip() for ingredient in ingredients.split(',')]
+    return []
+
 def Heterogeneous_Graph(df):
     # Create an empty graph
     G = nx.MultiGraph()
+
+    # Initialize counters for unique nodes of each type
+    user_count = 0
+    recipe_count = 0
+    ingredient_count = 0
+    nutrition_count = 0
+
+    # Create sets to keep track of unique nodes
+    user_nodes = set()
+    recipe_nodes = set()
+    ingredient_nodes = set()
+
+    # Define fixed nutrition node names
+    nutrition_node_names = ['fibres', 'fat', 'sugar', 'sodium', 'protein', 'saturated_fat', 'carbohydrates']
 
     # Iterate through the data and populate the graph
     for i in range(len(df)):
         uid = df.loc[i, 'user_id']
         rid = df.loc[i, 'recipe_id']
-        ing = df.loc[i, 'ingredients']
-        nut = df.loc[i, 'nutrition']
+        ingredients = process_ingredients(df.loc[i, 'ingredients'])
+        nutrition_values = df.loc[i, 'nutrition']
+        rating = df.loc[i, 'rating']  # Extract the rating
 
-        # Add user_id, recipe_id, ingredients, and nutrition as nodes
-        G.add_node(uid, node_type='user')
-        G.add_node(rid, node_type='recipe')
-        G.add_node(ing, node_type='ingredients')
-        G.add_node(nut, node_type='nutrition')
+        # Add user_id and recipe_id as nodes if they are unique
+        if uid not in user_nodes:
+            G.add_node(uid, node_type='user')
+            user_nodes.add(uid)
+            user_count += 1
 
-        # Add edges between user_id and recipe_id
-        G.add_edge(uid, rid, edge_type='rating')
+        if rid not in recipe_nodes:
+            G.add_node(rid, node_type='recipe')
+            recipe_nodes.add(rid)
+            recipe_count += 1
 
-        # Add edges between recipe_id and ingredients
-        if isinstance(ing, str):
-            ingredients_list = ing.split(',')
-            for ingredient in ingredients_list:
-                ingredient = ingredient.strip()
-                G.add_node(ingredient, node_type='ingredients')
-                G.add_edge(rid, ingredient, edge_type='ingredient')
+        # Add edges between user_id and recipe_id with weight as rating
+        G.add_edge(uid, rid, edge_type='rating', weight=rating)
 
-        # Add edges between recipe_id and nutrition
-        if isinstance(nut, str):
-            nutrition_list = nut.split(',')
-            for nutrition_item in nutrition_list:
-                nutrition_item = nutrition_item.strip()
-                G.add_node(nutrition_item, node_type='nutrition')
-                G.add_edge(rid, nutrition_item, edge_type='nutrition')
+        # Process ingredients and add nodes
+        for ingredient in ingredients:
+            if ingredient not in ingredient_nodes:
+                G.add_node(ingredient, node_type='ingredient')
+                ingredient_nodes.add(ingredient)
+                ingredient_count += 1
+            G.add_edge(rid, ingredient, edge_type='contains')
+
+    # Process nutrition and add fixed nutrition nodes with varying values
+    for j, nutrition_node_name in enumerate(nutrition_node_names):
+        if j < len(nutrition_values) and nutrition_values[j] is not None:
+            nutrition_value = nutrition_values[j]
+            G.add_node(nutrition_node_name, node_type='nutrition')
+            G.add_edge(rid, nutrition_node_name, edge_type='has_nutrition', value=nutrition_value)
+            nutrition_count += 1
+
+    # Print the total number of nodes
+    print("Total Nodes:", G.number_of_nodes())
+    print("Number of User Nodes:", user_count)
+    print("Number of Recipe Nodes:", recipe_count)
+    print("Number of Ingredient Nodes:", ingredient_count)
+    print("Number of Nutrition Nodes:", nutrition_count)
 
     # Define the meta-paths
     meta_paths = [
-        ['user_id', 'recipe_id', 'nutrition', 'ingredients'],
-        ['user_id', 'recipe_id'],
-        ['user_id', 'recipe_id', 'ingredients', 'nutrition'],
-        ['recipe_id', 'nutrition', 'ingredients'],
-        ['recipe_id', 'ingredients', 'nutrition']
+        ['user_id', 'recipe_id', 'contains', 'has_nutrition'],
+        ['user_id', 'recipe_id', 'contains'],
+        ['user_id', 'recipe_id', 'has_nutrition'],
     ]
 
     # Print the edges and their attributes for each meta-path
     for meta_path in meta_paths:
         print("Meta-Path:", " -> ".join(meta_path))
         paths = []
-        
-        # Check if the meta-path starts with 'user_id' and ends with 'ingredients'
-        if meta_path[0] == 'user_id' and meta_path[-1] == 'ingredients':
+
+        # Construct paths based on meta-path
+        if meta_path[0] == 'user_id' and meta_path[-1] == 'has_nutrition':
             for uid in G.nodes():
                 if G.nodes[uid]['node_type'] == 'user':
                     for rid in G.neighbors(uid):
                         if G.nodes[rid]['node_type'] == 'recipe':
-                            for ing in G.neighbors(rid):
-                                if G.nodes[ing]['node_type'] == 'ingredients':
-                                    paths.append([uid, rid, ing])
-        
-        # Check if the meta-path starts with 'user_id' and ends with 'nutrition'
-        elif meta_path[0] == 'user_id' and meta_path[-1] == 'nutrition':
-            for uid in G.nodes():
-                if G.nodes[uid]['node_type'] == 'user':
-                    for rid in G.neighbors(uid):
-                        if G.nodes[rid]['node_type'] == 'recipe':
-                            for nut in G.neighbors(rid):
-                                if G.nodes[nut]['node_type'] == 'nutrition':
-                                    for ing in G.neighbors(rid):
-                                        if G.nodes[ing]['node_type'] == 'ingredients':
-                                            paths.append([uid, rid, nut, ing])
+                            for nutrition_node in G.neighbors(rid):
+                                if G.nodes[nutrition_node]['node_type'] == 'nutrition':
+                                    path = [uid, rid] + [nutrition_node]
+                                    paths.append(path)
         
         # Print only the first 5 paths for each meta-path
         for i, path in enumerate(paths[:5]):
@@ -182,12 +201,18 @@ def Heterogeneous_Graph(df):
                         print("Target:", target)
                         if 'edge_type' in data:
                             print("Edge Type:", data['edge_type'])
+                            if data['edge_type'] == 'rating':
+                                print("Weight:", data['weight'])
+                            elif data['edge_type'] == 'contains':
+                                print("Ingredient:", target)
+                            elif data['edge_type'] == 'has_nutrition':
+                                print("Nutrition Value:", data['value'])
                         else:
                             print("Edge Type: N/A")
                 else:
                     print("No edges between", source, "and", target)
             print()
-        
+            
 # Define the NLA class
 class NLA(nn.Module):
     def __init__(self, num_users, num_recipes, num_ingredients, num_nutrition, embedding_dim, paths):
