@@ -346,67 +346,6 @@ def find_paths_users_interests(df):
 
     return paths_tensor, meta_path
 
-# Define the NLA class
-class NLA(nn.Module):
-    def __init__(self, num_users, num_recipes, num_ingredients, num_nutrition, embedding_dim, paths):
-        super(NLA, self).__init__()
-
-        # Embedding layers
-        self.user_embedding = nn.Embedding(num_users, embedding_dim)
-        self.recipe_embedding = nn.Embedding(num_recipes, embedding_dim)
-        self.ingredient_embedding = nn.Embedding(num_ingredients, embedding_dim)
-        self.nutrition_embedding = nn.Embedding(num_nutrition, embedding_dim)
-
-        # Attention mechanism
-        self.attention = nn.Sequential(
-            nn.Linear(embedding_dim, 1),
-            nn.Softmax(dim=1)
-        )
-
-        # Convert the paths to tensors
-        self.paths = torch.tensor(paths) if paths is not None else None
-
-    def forward(self, uid, rid, ing):
-        user_emb = self.user_embedding(uid)
-        recipe_emb = self.recipe_embedding(rid)
-        ingredient_emb = self.ingredient_embedding(ing)
-
-        if self.paths is not None:
-            path_scores = torch.zeros(uid.size(0), len(self.paths))
-            for i, path in enumerate(self.paths):
-                path = torch.tensor(path)
-                matching_uid = torch.where(uid == path[0])[0]
-                matching_rid = torch.where(rid == path[1])[0]
-                matching_ing = torch.where(ing == path[2])[0]
-
-                # Check if there are any matching indices
-                if matching_uid.size(0) > 0 and matching_rid.size(0) > 0 and matching_ing.size(0) > 0:
-                    matching_count = min(matching_uid.size(0), matching_rid.size(0), matching_ing.size(0))
-                    matching_indices = torch.stack((matching_uid[:matching_count], matching_rid[:matching_count], matching_ing[:matching_count]))
-                    path_scores[matching_indices] += 1
-
-            # Apply attention to ingredient embeddings
-            attention_scores = self.attention(ingredient_emb)
-            attention_scores = attention_scores.view(attention_scores.size(0), attention_scores.size(1), 1)
-            weighted_ingredients = attention_scores * ingredient_emb
-            aggregated_ingredients = torch.sum(weighted_ingredients, dim=1)
-
-            # Determine the maximum size along dimension 0
-            max_size = max(user_emb.size(0), recipe_emb.size(0), aggregated_ingredients.size(0))
-
-            # Pad tensors to match the maximum size along dimension 0
-            user_emb = F.pad(user_emb, (0, 0, 0, max_size - user_emb.size(0)))
-            recipe_emb = F.pad(recipe_emb, (0, 0, 0, max_size - recipe_emb.size(0)))
-            aggregated_ingredients = F.pad(aggregated_ingredients, (0, 0, 0, max_size - aggregated_ingredients.size(0)))
-
-            # Concatenate and return the final embedding
-            node_embeddings = torch.cat((user_emb, recipe_emb, aggregated_ingredients), dim=1)
-        else:
-            # Concatenate the embeddings without attention
-            node_embeddings = torch.cat((user_emb, recipe_emb, ingredient_emb), dim=1)
-
-        return node_embeddings
-
 # Define the SLA class
 class SLA(nn.Module):
     def __init__(self, num_ingredients, embedding_dim):
