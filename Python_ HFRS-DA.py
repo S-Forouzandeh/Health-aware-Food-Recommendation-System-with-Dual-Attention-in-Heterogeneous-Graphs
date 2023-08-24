@@ -42,43 +42,8 @@ file_path = r"C:\Food\Food_Dataset.zip"
 # Read the file into a pandas DataFrame
 df = pd.read_csv(file_path)
 
-def process_data(folder_path, files_to_read):
-    # Create a dictionary to store recipe_id as key and total score and count as values
-    recipe_scores = {}
-
-    # Loop through the files and read their contents
-    for file in files_to_read:
-        file_path = os.path.join(folder_path, file)
-        if os.path.isfile(file_path):
-            # Read the CSV file
-            if file == 'Food_Dataset.zip':
-                df = pd.read_csv(file_path)
-                user_id = df['user_id']
-                recipe_id = df['recipe_id']
-                rating = df['rating']
-
-                # Iterate through user_id, recipe_id, and rating columns to calculate total score and count for each recipe_id
-                for i in range(len(user_id)):
-                    uid = user_id[i]
-                    rid = recipe_id[i]
-                    r = rating[i]
-                    if rid not in recipe_scores:
-                        recipe_scores[rid] = {'total_score': 0, 'count': 0}
-                    recipe_scores[rid]['total_score'] += r
-                    recipe_scores[rid]['count'] += 1
-
-    # # Calculate the average score for each recipe_id
-    # for rid, scores in recipe_scores.items():
-    #     avg_score = scores['total_score'] / scores['count']
-    #     print(f"Recipe ID: {rid}, Average Score: {avg_score}")
-
-    # Extract ingredients and nutrition from 'Food_Dataset.zip' file
-    df = pd.read_csv(os.path.join(folder_path, 'Food_Dataset.zip'))
-    recipe_id = df['recipe_id']
-    ingredients = df['ingredients']
-    nutrition = df['nutrition']
-
-    # Print the first 10 user_ids along with their information
+def test_print_data():
+    # Print the first 3 user_ids along with their information
     for i in range(min(3, len(df))):
         uid = df.loc[i, 'user_id']
         rid = df.loc[i, 'recipe_id']
@@ -155,7 +120,7 @@ def Load_Into_Graph(df):
     return G
 
 
-def Heterogeneous_Graph(df):
+def test_print_metapaths():
     # Populate the heterogeneous graph
     G = Load_Into_Graph(df)
 
@@ -222,8 +187,6 @@ class NLA(nn.Module):
         self.user_embedding = nn.Embedding(num_users, embedding_dim)
         self.recipe_embedding = nn.Embedding(num_recipes, embedding_dim)
         self.ingredient_embedding = nn.Embedding(num_ingredients, embedding_dim)
-        self.nutrition_embedding = nn.Embedding(num_nutrition, embedding_dim)
-
         # Attention mechanism
         self.attention = nn.Sequential(
             nn.Linear(embedding_dim, 1),
@@ -292,12 +255,12 @@ class HeterogeneousDataset(Dataset):
         label = self.labels[idx]
         return uid, rid, ing, label
 
-def find_paths_users_interests(df):
+def find_paths_users_interests():
     # Populate the heterogeneous graph
     G = Load_Into_Graph(df)
 
     # Calculate the average rating for each recipe_id and create a new column 'avg_rating'
-    df['avg_rating'] = df.groupby('recipe_id')['rating'].mean()
+    recipe_avg_rating = df.groupby('recipe_id')['rating'].mean()['rating']
 
     # Print the meta-path
     meta_path = ['user_id', 'recipe_id', 'ingredient', 'nutrition']
@@ -311,19 +274,21 @@ def find_paths_users_interests(df):
                 # Check if there are matching rows in df before accessing by index
                 matching_rows = df[df['recipe_id'] == rid]
                 if not matching_rows.empty:
-                    if matching_rows['rating'].iloc[0] >= matching_rows['avg_rating'].iloc[0]:
-                        ingredient_node = None
-                        nutrition_node = None
+                    if matching_rows['rating'].iloc[0] >= recipe_avg_rating[rid]:
+                        ingredient_node = []
+                        nutrition_node = []
 
                         for node in G.neighbors(rid):
                             if G.nodes[node]['node_type'] == 'ingredients':
-                                ingredient_node = node
+                                ingredient_node.append(node)
                             elif G.nodes[node]['node_type'] == 'nutrition':
-                                nutrition_node = node
+                                nutrition_node.append(node)
 
-                        if ingredient_node and nutrition_node:
-                            paths.append([uid, rid, ingredient_node, nutrition_node])
+                        for ing in ingredient_node:
+                            for nut in nutrition_node:
+                                paths.append([uid, rid, ing, nut])
 
+    ### FIXME: nutrition is not getting encoded.
     # Encode the paths using label encoders
     user_encoder = LabelEncoder()
     recipe_encoder = LabelEncoder()
@@ -397,8 +362,8 @@ def find_healthy_foods(df):
     # Populate the heterogeneous graph
     G = Load_Into_Graph(df)
 
-    # Calculate the average rating for each recipe_id and create a new column 'avg_rating'
-    df['avg_rating'] = df.groupby('recipe_id')['rating'].mean()
+    # Calculate the average rating for each recipe_id
+    recipe_avg_rating = df.groupby('recipe_id')['rating'].mean()['rating']
 
     # Print the meta-path
     meta_path = ['user_id', 'recipe_id', 'ingredient', 'nutrition']
@@ -412,7 +377,10 @@ def find_healthy_foods(df):
                 # Check if there are matching rows in df before accessing by index
                 matching_rows = df[df['recipe_id'] == rid]
                 if not matching_rows.empty:
-                    if matching_rows['rating'].iloc[0] >= matching_rows['avg_rating'].iloc[0]:
+                    if matching_rows['rating'].iloc[0] >= recipe_avg_rating[rid]:
+                        ### FIXME: This is throwing away all
+                        ### ingredient and nutrient nodes except the
+                        ### last.
                         ingredient_node = None
                         nutrition_node = None
 
@@ -427,14 +395,16 @@ def find_healthy_foods(df):
 
     healthy_foods = set()
 
+    # Calculate the average rating for each recipe_id
+    user_avg_rating = df.groupby('user_id')['rating'].mean()['rating']
+    
     for uid in G.nodes():
         if G.nodes[uid]['node_type'] == 'user':
             # Check if user_id has an average rating
             if uid in df['user_id'].values.tolist():
-                avg_rating = df.loc[df['user_id'] == uid, 'avg_rating'].iloc[0]
                 user_rated_recipes = [rid for rid in G.neighbors(uid) if G.nodes[rid]['node_type'] == 'recipe']
                 for rid in user_rated_recipes:
-                    if G.get_edge_data(uid, rid)[0]['weight'] >= avg_rating:
+                    if G.get_edge_data(uid, rid)[0]['weight'] >= user_avg_rating[uid]:
                         nutrition_health = [int(token) for token in df[df['recipe_id'] == rid]['nutrition'].iloc[0].split(',') if token.strip().isdigit()]
                         if is_healthy(nutrition_health):  # Use the is_healthy function here
                             healthy_foods.add(rid)
@@ -579,14 +549,14 @@ def evaluate_recommendations(recommendations, ground_truth_ratings, validation_s
 
 def main():
 
-    # Call the process_data function
-    process_data(folder_path, files_to_read)
+    # Print the first few rows of the data
+    test_print_data()
 
-    # Call the Heterogeneous_Graph function
-    Heterogeneous_Graph(df)
+    # Print some example metapaths
+    test_print_metapaths()
 
    # Call the find_paths_users_interests function
-    paths_tensor, meta_path = find_paths_users_interests(df)
+    paths_tensor, meta_path = find_paths_users_interests()
 
     # Print the filtered meta-path
     print("Filtered Meta-Path:", " -> ".join(meta_path))
