@@ -137,7 +137,7 @@ def Load_Into_Graph(df):
         # Add new ingredients as nodes
         if type(ing) is str:
             # Remove brackets and single quotes
-            ing = ing.strip('[]').replace("'", "").split(',')
+            ing = eval(ing)
             G.add_nodes_from(ing, node_type='ingredients')
             # Add edges between recipe_id and ingredients
             for i in ing: 
@@ -506,7 +506,7 @@ def find_healthy_foods(df):
                 matching_rows = df[df['recipe_id'] == rid]
                 if not matching_rows.empty:
                     if matching_rows['rating'].iloc[0] >= matching_rows['avg_rating'].iloc[0]:
-                        nutrition_health = [int(token) for token in matching_rows['nutrition'].iloc[0].split(',') if token.strip().isdigit()]
+                        nutrition_health = [int(token) for token in eval(matching_rows['nutrition'].iloc[0]) if token.strip().isdigit()]
                         is_healthy_food = is_healthy(nutrition_health)
                         ingredient_node = []
                         nutrition_node = []
@@ -541,7 +541,7 @@ def rate_healthy_recipes_for_user(user_id, df):
         avg_rating = user_data[user_data['recipe_id'] == rid]['avg_rating'].iloc[0]
         rating = user_data[user_data['recipe_id'] == rid]['rating'].iloc[0]
         if rating >= avg_rating:
-            nutrition_health = [int(token) for token in user_data[user_data['recipe_id'] == rid]['nutrition'].iloc[0].split(',') if token.strip().isdigit()]
+            nutrition_health = eval(user_data[user_data['recipe_id'] == rid]['nutrition'].iloc[0])
             if is_healthy(nutrition_health):
                 user_healthy_recipes.add(rid)
 
@@ -578,8 +578,8 @@ def recommend_users_for_healthy_recipes(df, embeddings_for_healthy_foods):
         # Find users who share ingredients and nutrition based on embeddings
         for j, similarity_score in enumerate(similarities[i]):
             if i != j:
-                common_ingredients = set(df[df['user_id'] == user_id]['ingredients'].iloc[0].split(',')) & \
-                                    set(df[df['user_id'] == index_to_user_id[j]]['ingredients'].iloc[0].split(','))
+                common_ingredients = set(eval(df[df['user_id'] == user_id]['ingredients'].iloc[0])) & \
+                                    set(eval(df[df['user_id'] == index_to_user_id[j]]['ingredients'].iloc[0]))
                 
                 if common_ingredients:
                     recommendations[user_id]['users_with_shared_ingredients'].append(index_to_user_id[j])
