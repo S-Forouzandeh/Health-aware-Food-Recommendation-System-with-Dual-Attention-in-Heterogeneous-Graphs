@@ -397,7 +397,7 @@ class SLA(nn.Module):
         
         self.attention = nn.Sequential(
             nn.Linear(embedding_dim, embedding_dim),  # Output size matches embedding_dim
-            nn.LeakyReLU(negative_slope=0.01),  # Add Leaky ReLU
+            nn.LeakyReLU(negative_slope=0.01),  
             nn.Softmax(dim=1)
         )
         self.is_healthy = is_healthy  # New parameter
@@ -406,6 +406,8 @@ class SLA(nn.Module):
     def forward(self, uid, rid, ing, nut, is_healthy=None):
         if is_healthy is None:
             is_healthy = self.is_healthy
+        else:
+            is_healthy = F.leaky_relu(is_healthy, negative_slope=0.01)
 
         user_emb = self.user_embedding(uid)
         recipe_emb = self.recipe_embedding(rid)
@@ -447,8 +449,8 @@ class SLA(nn.Module):
             # Print the loss for SLA
             print(f"Epoch SLA {epoch_sla + 1}/{num_epochs_sla}, SLA Loss: {loss_sla.item():.4f}")
 
-        # Print the aggregated ingredient embeddings from SLA (for healthy foods)
-        print("Embeddings Vectors (SLA for Healthy Foods):")
+        # Print the aggregated ingredient embeddings from SLA (for healthy recipes)
+        print("Embeddings Vectors (SLA) based Healthy recipes:")
         print(embeddings_for_healthy_foods)
 
 # Define the is_healthy function
