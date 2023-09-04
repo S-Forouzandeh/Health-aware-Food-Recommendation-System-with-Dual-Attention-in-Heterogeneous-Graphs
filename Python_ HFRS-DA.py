@@ -486,9 +486,6 @@ def find_healthy_foods(df):
     # Populate the heterogeneous graph
     G = Load_Into_Graph(df)
 
-    # Calculate the average rating for each recipe_id and create a new column 'avg_rating'
-    df['avg_rating'] = df.groupby('recipe_id')['rating'].mean()
-
     paths = []
     healthy_foods = set()  # Store healthy recipes here
 
@@ -499,21 +496,20 @@ def find_healthy_foods(df):
                 # Check if there are matching rows in df before accessing by index
                 matching_rows = df[df['recipe_id'] == rid]
                 if not matching_rows.empty:
-                    if matching_rows['rating'].iloc[0] >= matching_rows['avg_rating'].iloc[0]:
-                        nutrition_health = [int(token) for token in eval(matching_rows['nutrition'].iloc[0]) if token.strip().isdigit()]
-                        is_healthy_food = is_healthy(nutrition_health)
-                        ingredient_node = []
-                        nutrition_node = []
-                        for node in G.neighbors(rid):
-                            if G.nodes[node]['node_type'] == 'ingredients':
-                                ingredient_node.append(node)
-                            elif G.nodes[node]['node_type'] == 'nutrition':
-                                nutrition_node.append(node)
-                        for ing in ingredient_node:
-                            for nut in nutrition_node:
-                                paths.append([uid, rid, ing, nut])
-                        if is_healthy_food:
-                            healthy_foods.add(rid)  # Add the recipe to healthy foods
+                    nutrition_health = [int(token) for token in eval(matching_rows['nutrition'].iloc[0]) if token.strip().isdigit()]
+                    is_healthy_food = is_healthy(nutrition_health)
+                    ingredient_node = []
+                    nutrition_node = []
+                    for node in G.neighbors(rid):
+                        if G.nodes[node]['node_type'] == 'ingredients':
+                            ingredient_node.append(node)
+                        elif G.nodes[node]['node_type'] == 'nutrition':
+                            nutrition_node.append(node)
+                    for ing in ingredient_node:
+                        for nut in nutrition_node:
+                            paths.append([uid, rid, ing, nut])
+                    if is_healthy_food:
+                        healthy_foods.add(rid)  # Add the recipe to healthy foods
 
     # Encode the paths using label encoders
     recipe_encoder = LabelEncoder()
