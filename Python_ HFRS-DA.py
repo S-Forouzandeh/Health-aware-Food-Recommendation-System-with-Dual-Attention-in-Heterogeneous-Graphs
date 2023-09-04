@@ -541,7 +541,7 @@ def rate_healthy_recipes_for_user(user_id, df):
 
     return user_healthy_recipes
 
-def recommend_users_for_healthy_recipes(df, embeddings_for_healthy_foods):
+def recommend_users_for_healthy_recipes(df, concatenate_output_Embeddings):
     recommendations = {}
     index_to_user_id = {}
 
@@ -550,9 +550,9 @@ def recommend_users_for_healthy_recipes(df, embeddings_for_healthy_foods):
         index_to_user_id[i] = user_id
 
     # Calculate cosine similarities between user embeddings
-    similarities = cosine_similarity(embeddings_for_healthy_foods)  
+    similarities = cosine_similarity(concatenate_output_Embeddings)  
 
-    for i, user_embedding in enumerate(embeddings_for_healthy_foods):
+    for i, user_embedding in enumerate(concatenate_output_Embeddings):  
         user_id = index_to_user_id[i]
 
         recommendations[user_id] = {
@@ -701,13 +701,19 @@ def main():
     # Extract the embeddings for healthy foods after training
     embeddings_for_healthy_foods = sla_for_healthy_foods(uid_tensor, rid_tensor, ing_tensor, nut_tensor)
 
-    # Detach the tensor before converting it to a NumPy array
-    embeddings_for_healthy_foods = embeddings_for_healthy_foods.detach().numpy()
+    # Concatenate the outputs from both models NLA and SLA Embeddings
+    concatenate_output_Embeddings = torch.cat((embeddings_nla, embeddings_for_healthy_foods), dim=1)
+
+    # Print the concatenated embeddings
+    print("Concatenated Embeddings vectors of NLA and SLA Models:")
+    print(concatenate_output_Embeddings)
+
+   # Detach the tensor before converting it to a NumPy array
+    concatenate_output_Embeddings = concatenate_output_Embeddings.detach().numpy()
 
     # Compute cosine similarities
-    similarities = cosine_similarity(embeddings_for_healthy_foods)
-
-    recommendations = recommend_users_for_healthy_recipes(df, embeddings_for_healthy_foods)
+    similarities = cosine_similarity(concatenate_output_Embeddings)
+    recommendations = recommend_users_for_healthy_recipes(df, concatenate_output_Embeddings)
 
     # Iterate through the recommendations for each user
     for user_id, user_recommendations in recommendations.items():
