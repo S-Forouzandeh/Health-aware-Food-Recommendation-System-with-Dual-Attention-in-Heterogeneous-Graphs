@@ -223,12 +223,6 @@ class NLA(nn.Module):
         self.ingredient_embedding = nn.Embedding(num_ingredients, embedding_dim)
         self.nutrition_embedding = nn.Embedding(num_nutrition, embedding_dim)
 
-        # Attention mechanism
-        self.attention = nn.Sequential(
-            nn.Linear(embedding_dim, 1),
-            nn.Softmax(dim=1)
-        )
-
         # Convert the paths to tensors
         self.paths = paths.clone().detach() if paths is not None else None
 
@@ -245,11 +239,11 @@ class NLA(nn.Module):
                 matching_uid = torch.where(uid == path[0])[0]
                 matching_rid = torch.where(rid == path[1])[0]
                 matching_ing = torch.where(ing == path[2])[0]
-                matching_nut = torch.where(ing == path[3])[0]
+                matching_nut = torch.where(nut == path[3])[0]  # Fix this line
                 
                 # Check if there are any matching indices
                 if matching_uid.size(0) > 0 and matching_rid.size(0) > 0 and matching_ing.size(0) > 0 and matching_nut.size(0) > 0:
-                    matching_count = min(matching_uid.size(0), matching_rid.size(0), matching_ing.size(0), matching_nut.size(0) )
+                    matching_count = min(matching_uid.size(0), matching_rid.size(0), matching_ing.size(0), matching_nut.size(0))
                     matching_indices = torch.stack((matching_uid[:matching_count], matching_rid[:matching_count], matching_ing[:matching_count], matching_nut[:matching_count]))
                     path_scores[matching_indices] += 1
                     
@@ -257,13 +251,10 @@ class NLA(nn.Module):
             k = 3  # Number of iterations
             node_emb_theta = torch.zeros(user_emb.size(0), user_emb.size(1))
             for i in range(k):
-                attention_scores = self.attention(user_emb)
-                weighted_attention = attention_scores * user_emb
+                attention_scores = F.leaky_relu(node_emb_theta, negative_slope=0.01)
+                attention_scores = F.softmax(attention_scores, dim=1)
+                weighted_attention = attention_scores.unsqueeze(2) * user_emb.unsqueeze(1)
 
-            # Apply attention to ingredient embeddings
-            attention_scores = self.attention(user_emb)
-            attention_scores = attention_scores.view(attention_scores.size(0), attention_scores.size(1), 1)
-            weighted_attention = attention_scores * user_emb
             aggregated_attention = torch.sum(weighted_attention, dim=1)
 
             # Determine the maximum size along dimension 0
@@ -281,7 +272,7 @@ class NLA(nn.Module):
             node_embeddings = torch.cat((user_emb, recipe_emb, ingredient_emb, nutrition_emb), dim=1)
 
         return node_embeddings
-    
+
     def train_nla(self, df, user_encoder, recipe_encoder, ingredient_encoder, nutrition_encoder, num_epochs=100):
         criterion_nla = nn.MSELoss()
         optimizer_nla = optim.Adam(self.parameters(), lr=0.01)
@@ -406,6 +397,7 @@ class SLA(nn.Module):
         
         self.attention = nn.Sequential(
             nn.Linear(embedding_dim, embedding_dim),  # Output size matches embedding_dim
+            nn.LeakyReLU(negative_slope=0.01),  # Add Leaky ReLU
             nn.Softmax(dim=1)
         )
         self.is_healthy = is_healthy  # New parameter
@@ -433,7 +425,7 @@ class SLA(nn.Module):
         node_embeddings = torch.cat((user_emb, recipe_emb, ingredient_emb, nutrition_emb), dim=1)
 
         return node_embeddings
-    
+
     def edge_loss(self, h_sla):
         loss = -torch.log(1 / (1 + torch.exp(h_sla)))
         return loss.mean()
