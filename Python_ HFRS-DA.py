@@ -1,7 +1,7 @@
 #!/usr/bin/env -S python3 -u
 #PBS -N Saman
-#PBS -l select=1:ncpus=16:mem=64gb
-#PBS -l walltime=16:00:00
+#PBS -l select=1:ncpus=16:mem=256gb
+#PBS -l walltime=24:00:00
 #PBS -v OMP_NUM_THREADS=16
 #PBS -j oe
 #PBS -k oed
@@ -59,8 +59,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s')
 logging.info('This is an informational log message.')
 
 # folder_path = '/home/z5318340'
-# files_to_read = ['Food_Dataset.zip']  
-# file_path = '/home/z5318340/Food_Dataset.zip'
+# files_to_read = ['Main_Dataset.zip']  
+# file_path = '/home/z5318340/Main_Dataset.zip'
 
 folder_path = r"C:\Food"
 files_to_read = ['Food_Dataset.zip']
@@ -424,7 +424,6 @@ def find_paths_users_interests(df):
 
     return paths_tensor, meta_path
 
-# Define the SLA class
 class SLA(nn.Module):
     def __init__(self, num_users, num_recipes, num_ingredients, num_nutrition, embedding_dim, paths, is_healthy=False):
         super(SLA, self).__init__()
@@ -436,10 +435,19 @@ class SLA(nn.Module):
         self.attention = nn.Sequential(
             nn.Linear(embedding_dim, embedding_dim),  # Output size matches embedding_dim
             nn.LeakyReLU(negative_slope=0.01),  
-            nn.Softmax(dim=1)
         )
-        self.is_healthy = is_healthy  # New parameter
+        self.is_healthy = is_healthy  
         self.paths = paths.clone().detach() if paths is not None else None
+
+    def calculate_impression_coefficient(self, source_embedding, destination_embedding):
+        # Calculate the impression coefficient using source and destination embeddings
+        impression_coefficient = torch.matmul(source_embedding, destination_embedding.T)
+        return impression_coefficient
+
+    def calculate_weight(self, impression_coefficient):
+        # Calculate the weight using leakyReLU activation
+        weight = torch.sum(F.leaky_relu(impression_coefficient, negative_slope=0.01))
+        return weight
 
     def forward(self, uid, rid, ing, nut, is_healthy=None):
         if is_healthy is None:
@@ -464,10 +472,26 @@ class SLA(nn.Module):
         # Concatenate and return the final embedding
         node_embeddings = torch.cat((user_emb, recipe_emb, ingredient_emb, nutrition_emb), dim=1)
 
-        return node_embeddings
+        # Calculate the impression coefficient based on the meta-path
+        impression_coefficient = self.calculate_impression_coefficient(user_emb, recipe_emb)
 
-    def edge_loss(self, h_sla):
-        loss = -torch.log(1 / (1 + torch.exp(h_sla)))
+        # Calculate the softmax of the impression coefficient
+        softmax_impression_coefficient = F.softmax(impression_coefficient, dim=1)
+
+        # Calculate the weight
+        weight = self.calculate_weight(softmax_impression_coefficient)
+
+        return node_embeddings, impression_coefficient, weight
+    
+    # def edge_loss(self, impression_coefficient):
+    #     # Calculate the log loss based on the impression coefficient
+    #     log_loss = torch.log(1 / (1 + torch.exp(impression_coefficient))) 
+    #     # Sum all the log losses
+    #     loss = -torch.sum(log_loss)  
+    #     return loss
+    
+    def edge_loss(self, weight):
+        loss = -torch.log(1 / (1 + torch.exp(weight)))
         return loss.mean()
 
     def train_sla(self, uid_tensor, rid_tensor, ing_tensor, nut_tensor, num_epochs_sla=30):
@@ -477,10 +501,10 @@ class SLA(nn.Module):
             optimizer_sla.zero_grad()
 
             # Forward pass
-            embeddings_for_healthy_foods = self(uid_tensor, rid_tensor, ing_tensor, nut_tensor)
+            node_embeddings, impression_coefficient, weight = self(uid_tensor, rid_tensor, ing_tensor, nut_tensor)
 
             # Calculate the loss using the edge_loss function
-            loss_sla = self.edge_loss(embeddings_for_healthy_foods)
+            loss_sla = self.edge_loss(impression_coefficient)  # Use impression_coefficient for loss calculation
             loss_sla.backward()
             optimizer_sla.step()
 
@@ -489,7 +513,7 @@ class SLA(nn.Module):
 
         # Print the aggregated ingredient embeddings from SLA (for healthy recipes)
         logging.info("Embeddings Vectors (SLA) based Healthy recipes:")
-        logging.info(embeddings_for_healthy_foods)
+        logging.info(node_embeddings)
 
 # Define the is_healthy function
 def is_healthy(food_data):
@@ -651,15 +675,14 @@ def recommend_users_for_healthy_recipes(df, normalized_embeddings, similarity_th
                     if len(recommended_recipes) >= top_n_similar:
                         break
 
-        recommendations[user_id] = {
-            'most_similar_user_ids': [df.iloc[j]['user_id'] for j, _ in similar_users if j < num_rows],
-            'user_healthy_recipes': recommended_recipes
-        }
+        # recommendations[user_id] = {
+        #     'most_similar_user_ids': [df.iloc[j]['user_id'] for j, _ in similar_users if j < num_rows],
+        #     'user_healthy_recipes': recommended_recipes
+        # }
 
     return recommendations
 
 #---------------Evaluation Library- Three Metrics -------------------------------
-
 def load_ground_truth_ratings(files_to_read, folder_path):
     ground_truth_ratings = {}
     ground_truth_labels = set()  # Use a set to ensure unique user IDs
@@ -735,56 +758,6 @@ def evaluate_recommendation_system(user_normalized_embeddings, ground_truth_rati
     mean_f1 = np.mean(f1_scores)
 
     return mean_precision, mean_recall, mean_f1
-
-#---------------Evaluation Manual- Three Metrics -------------------------------
-
-def M_evaluate_recommendation_system(user_normalized_embeddings, ground_truth_ratings, Top_K):
-    # Extract user IDs and normalized embeddings
-    user_ids, normalized_embeddings = zip(*user_normalized_embeddings)
-
-    # Split the data into train and test sets (80% train, 20% test)
-    X_train, X_test, y_train, y_test = train_test_split(normalized_embeddings, user_ids, test_size=0.2, random_state=42)
-
-    # Compute cosine similarity between user embeddings in the test set
-    similarity_matrix = cosine_similarity(X_test, normalized_embeddings)
-
-    # Initialize lists to store evaluation metrics
-    M_precision_scores = []
-    M_recall_scores = []
-    M_f1_scores = []
-
-    for i, test_user_id in enumerate(y_test):
-        # Get the cosine similarity scores for the current user
-        similarity_scores = similarity_matrix[i]
-
-        # Sort user IDs by similarity (higher similarity first)
-        similar_user_ids = [user_id for _, user_id in sorted(zip(similarity_scores, user_ids), reverse=True)]
-
-        # Get the top-k recommendations
-        recommended_user_ids = similar_user_ids[:Top_K]
-
-        # Calculate true labels (1 if user is in ground truth ratings, 0 otherwise)
-        true_labels = [1 if user_id in ground_truth_ratings else 0 for user_id in recommended_user_ids]
-
-        # Manually calculate precision, recall, and F1-score
-        true_positives = sum(true_labels)
-        false_positives = Top_K - true_positives
-        false_negatives = len(ground_truth_ratings) - true_positives
-
-        M_precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
-        M_recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0
-        M_f1 = 2 * (M_precision * M_recall) / (M_precision + M_recall) if (M_precision + M_recall) > 0 else 0
-
-        M_precision_scores.append(M_precision)
-        M_recall_scores.append(M_recall)
-        M_f1_scores.append(M_f1)
-
-    # Compute the mean of evaluation metrics
-    M_mean_precision = np.mean(M_precision_scores)
-    M_mean_recall = np.mean(M_recall_scores)
-    M_mean_f1 = np.mean(M_f1_scores)
-
-    return M_mean_precision, M_mean_recall, M_mean_f1
 
 #---------------Evaluation based-AUC -------------------------------
 
@@ -941,7 +914,7 @@ def main():
     nla_model = NLA(num_users, num_recipes, num_ingredients, num_nutrition, embedding_dim, paths_tensor)
 
     # Train the NLA model
-    nla_loss = nla_model.train_nla(df, user_encoder, recipe_encoder, ingredient_encoder, nutrition_encoder, num_epochs=10)
+    NLA_loss = nla_model.train_nla(df, user_encoder, recipe_encoder, ingredient_encoder, nutrition_encoder, num_epochs=10)
     
     # Get and print the embeddings
     uid_tensor = torch.LongTensor(list(range(num_users)))
@@ -955,12 +928,12 @@ def main():
     
     # Create an SLA instance for healthy foods with the same common dimension
     sla_for_healthy_foods = SLA(num_users, num_recipes, num_ingredients, num_nutrition, embedding_dim, paths_tensor, is_healthy=True)
+    
+    # Train the SLA model for healthy foods
+    sla_for_healthy_foods.train_sla(uid_tensor, rid_tensor, ing_tensor, nut_tensor, num_epochs_sla=30)
 
     # Train the SLA model for healthy foods
-    sla_for_healthy_foods.train_sla(uid_tensor, rid_tensor, ing_tensor, nut_tensor, num_epochs_sla=10)
-
-    # Extract the embeddings for healthy foods after training
-    embeddings_for_healthy_foods = sla_for_healthy_foods(uid_tensor, rid_tensor, ing_tensor, nut_tensor)
+    embeddings_for_healthy_foods, _, _ = sla_for_healthy_foods(uid_tensor, rid_tensor, ing_tensor, nut_tensor)
 
     # Find the smaller size between the two tensors' number of rows
     min_size = min(embeddings_nla.shape[0], embeddings_for_healthy_foods.shape[0])
@@ -981,10 +954,10 @@ def main():
 
     embeddings_nla = torch.cat((embeddings_nla, zero_padding_nla), dim=1)
     embeddings_for_healthy_foods = torch.cat((embeddings_for_healthy_foods, zero_padding_healthy), dim=1)
-        
+
     # Now both embeddings have the same size and dimensions
     summed_embeddings = embeddings_nla + embeddings_for_healthy_foods
-    
+
     # normalized_Embeddings vectors of summed_embeddings
     normalized_embeddings = normalize_summed_embeddings(summed_embeddings)
     normalize_user_id_embeddings = normalize_user_embeddings(summed_embeddings)
@@ -998,20 +971,20 @@ def main():
 
     recommendations = recommend_users_for_healthy_recipes(df, normalized_embeddings, similarity_threshold= 0.3, top_n_similar=5)
 
-    # Print the top 5 similar users for the first 5 users
-    user_ids = list(recommendations.keys())[:5]  # Get the first 5 user IDs
-    for user_id in user_ids:
-        print(f"User ID: {user_id}")
-        print("Top 5 Similar Users:")
-        for similar_user_id in recommendations[user_id]['most_similar_user_ids']:
-            print(f"Similar User ID: {similar_user_id}")
-        print("\n")
+    # # Print the top 5 similar users for the first 5 users
+    # user_ids = list(recommendations.keys())[:5]  # Get the first 5 user IDs
+    # for user_id in user_ids:
+    #     print(f"User ID: {user_id}")
+    #     print("Top 5 Similar Users:")
+    #     for similar_user_id in recommendations[user_id]['most_similar_user_ids']:
+    #         print(f"Similar User ID: {similar_user_id}")
+    #     print("\n")
 
     # Call the function to load and process the data
     ground_truth_ratings, ground_truth_labels, test_set_users = load_ground_truth_ratings(files_to_read, folder_path)
     
     # Library Metris Precision, Recall and F1-score
-    k_values = range(1, 21)
+    k_values = list(range(1, 21)) + [30, 40, 50]
     print("Results for Different Values of Library Metris based k:")
     print("=" * 55)
     print(f"{'k':<5}{'Mean Precision':<20}{'Mean Recall':<20}{'Mean F1-score':<20}")
@@ -1020,17 +993,6 @@ def main():
     for k in k_values:
         mean_precision, mean_recall, mean_f1 = evaluate_recommendation_system(normalize_user_id_embeddings, ground_truth_ratings, k)
         print(f"{k:<5}{mean_precision:.4f}{' ':<5}{mean_recall:.4f}{' ':<5}{mean_f1:.4f}")
-        
-   # Manual Metris Precision, Recall and F1-score
-    Top_K_values = range(1, 21)
-    print("\nResults for Different Values of Manual Metris based Top_K:")
-    print("=" * 55)
-    print(f"{'Top_K':<10}{'M_Mean Precision':<20}{'M_Mean Recall':<20}{'M_Mean F1-score':<20}")
-    print("=" * 55)
-
-    for Top_K in Top_K_values:
-        M_mean_precision, M_mean_recall, M_mean_f1 = M_evaluate_recommendation_system(normalize_user_id_embeddings, ground_truth_ratings, Top_K)
-        print(f"{Top_K:<10}{M_mean_precision:.4f}{' ':<5}{M_mean_recall:.4f}{' ':<5}{M_mean_f1:.4f}")    
 
 #--------Evaluation based-AUC -------------------
 
