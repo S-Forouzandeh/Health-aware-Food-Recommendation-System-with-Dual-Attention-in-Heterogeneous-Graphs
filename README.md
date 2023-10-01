@@ -27,7 +27,7 @@ The SLA class defines health foods based on the criteria outlined in the paper. 
 The recommend_users function generates food recommendations for users based on the embedding vectors obtained from the SLA class, as described in the paper.
 
 7. evaluate_recommendations function
-The evaluate_recommendations function evaluates the performance of the recommend_users function using evaluation metrics such as the Area Under the ROC Curve (AUC), Normalized Discounted Cumulative Gain (NDCG), and Recall.
+The evaluate_recommendations function evaluates the performance of the recommend_users function using evaluation metrics such as the Area Under the ROC Curve (AUC), Normalized Discounted Cumulative Gain (NDCG), Precision, Recall, and F1.
 
 Main function
 The main function orchestrates the execution of all the defined functions. It runs the data processing, graph construction, attention mechanism, recommendation generation, and evaluation steps. The results of the recommendation system, including the evaluation scores, are presented.
