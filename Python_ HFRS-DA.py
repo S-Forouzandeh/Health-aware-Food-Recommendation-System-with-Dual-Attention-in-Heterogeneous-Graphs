@@ -283,12 +283,7 @@ class NLA(nn.Module):
                     path_scores[matching_indices] += 1
                     
             # Node-Level Attention
-            k = 3  # Number of iterations
-            node_emb_theta = torch.zeros(user_emb.size(0), user_emb.size(1))
-            for i in range(k):
-                attention_scores = F.leaky_relu(node_emb_theta, negative_slope=0.01)
-                attention_scores = F.softmax(attention_scores, dim=1)
-                weighted_attention = attention_scores.unsqueeze(2) * user_emb.unsqueeze(1)
+            weighted_attention = user_emb.unsqueeze(1) / user_emb.size(1)
 
             aggregated_attention = torch.sum(weighted_attention, dim=1)
 
