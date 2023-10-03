@@ -268,20 +268,6 @@ class NLA(nn.Module):
         nutrition_emb = self.nutrition_embedding(nut)
 
         if self.paths is not None:
-            path_scores = torch.zeros(uid.size(0), len(self.paths))
-            for i, path in enumerate(self.paths):
-                path = torch.tensor(path).clone().detach()
-                matching_uid = torch.where(uid == path[0])[0]
-                matching_rid = torch.where(rid == path[1])[0]
-                matching_ing = torch.where(ing == path[2])[0]
-                matching_nut = torch.where(nut == path[3])[0]  # Fix this line
-                
-                # Check if there are any matching indices
-                if matching_uid.size(0) > 0 and matching_rid.size(0) > 0 and matching_ing.size(0) > 0 and matching_nut.size(0) > 0:
-                    matching_count = min(matching_uid.size(0), matching_rid.size(0), matching_ing.size(0), matching_nut.size(0))
-                    matching_indices = torch.stack((matching_uid[:matching_count], matching_rid[:matching_count], matching_ing[:matching_count], matching_nut[:matching_count]))
-                    path_scores[matching_indices] += 1
-                    
             # Node-Level Attention
             weighted_attention = user_emb.unsqueeze(1) / user_emb.size(1)
 
