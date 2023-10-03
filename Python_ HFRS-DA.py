@@ -718,16 +718,16 @@ def evaluate_recommendation_system(user_normalized_embeddings, ground_truth_rati
         # Sort user IDs by similarity (higher similarity first)
         similar_user_ids = [user_id for _, user_id in sorted(zip(similarity_scores, user_ids), reverse=True)]
 
-        # Get the top-k recommendations
-        recommended_user_ids = similar_user_ids[:k]
+        # A vector with first k elements "recommended" and the remaining not.
+        recommended_k = [1] * k + [0] * (len(similar_user_ids) - k)
 
         # Calculate true labels (1 if user is in ground truth ratings, 0 otherwise)
-        true_labels = [1 if user_id in ground_truth_ratings else 0 for user_id in recommended_user_ids]
+        true_labels = [1 if user_id in ground_truth_ratings else 0 for user_id in similar_user_ids]
 
         # Calculate precision, recall, and F1-score using sklearn.metrics
-        precision = precision_score(true_labels, [1] * len(true_labels), zero_division=0)
-        recall = recall_score(true_labels, [1] * len(true_labels), zero_division=0)
-        f1 = f1_score(true_labels, [1] * len(true_labels), zero_division=0)
+        precision = precision_score(true_labels, recommended_k, zero_division=0)
+        recall = recall_score(true_labels, recommended_k, zero_division=0)
+        f1 = f1_score(true_labels, recommended_k, zero_division=0)
 
         precision_scores.append(precision)
         recall_scores.append(recall)
