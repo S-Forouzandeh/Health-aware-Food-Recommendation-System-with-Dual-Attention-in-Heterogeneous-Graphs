@@ -936,7 +936,7 @@ def main():
     similarity_threshold = 0.5  # Adjust the similarity threshold as needed     
     
     # Define the top_k_values you want to evaluate
-    top_k_values_to_evaluate = [5]
+    top_k_values_to_evaluate = [10]
 
     # Loop through each top_k_value
     for top_k in top_k_values_to_evaluate:
